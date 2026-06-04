@@ -13,7 +13,7 @@ Vault target: /Users/apple/.hermes/memory-vault
 
 ```bash
 # restore previous provider; empty/None means built-in only
-hermes config set memory.provider 
+hermes config set memory.provider ""
 # or disable external memory entirely
 hermes memory off
 
