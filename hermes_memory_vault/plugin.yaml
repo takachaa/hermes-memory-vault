@@ -1,0 +1,5 @@
+name: hermes_memory_vault
+description: Markdown-first SQLite FTS memory vault provider for Hermes Agent
+version: 0.1.0
+kind: exclusive
+category: memory

@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# Local vault/index/cache data: do not commit personal memory
+memory-vault/
+.memory-vault/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Secrets/config/logs
+.env
+config.yaml
+*.log
+
+# macOS
+.DS_Store
