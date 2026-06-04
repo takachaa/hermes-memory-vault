@@ -7,6 +7,7 @@ import json
 from .config import VaultConfig
 from .db import ensure_database
 from .entities import search_entities, upsert_entity
+from .embeddings import provider_from_config, semantic_search
 from .health import run_health
 from .reindex import reindex_vault
 from .retrieval import fetch_chunks, search_chunks
@@ -102,9 +103,30 @@ UPSERT_ENTITY_SCHEMA = {
     },
 }
 
+SEMANTIC_SEARCH_SCHEMA = {
+    "name": "memory_vault_semantic_search",
+    "description": "Semantic search using the configured optional embedding provider and cached vectors.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "limit": {"type": "integer", "description": "Maximum hits, default 5."},
+        },
+        "required": ["query"],
+    },
+}
+
 
 def schemas() -> list[dict[str, Any]]:
-    return [SEARCH_SCHEMA, FETCH_SCHEMA, HEALTH_SCHEMA, REINDEX_SCHEMA, SEARCH_ENTITIES_SCHEMA, UPSERT_ENTITY_SCHEMA]
+    return [
+        SEARCH_SCHEMA,
+        FETCH_SCHEMA,
+        HEALTH_SCHEMA,
+        REINDEX_SCHEMA,
+        SEARCH_ENTITIES_SCHEMA,
+        UPSERT_ENTITY_SCHEMA,
+        SEMANTIC_SEARCH_SCHEMA,
+    ]
 
 
 def handle_tool(config: VaultConfig, tool_name: str, args: dict[str, Any]) -> str:
@@ -127,6 +149,12 @@ def handle_tool(config: VaultConfig, tool_name: str, args: dict[str, Any]) -> st
                 body=str(args.get("body") or ""),
             )
             return json.dumps({"ok": True, "entity": entity}, ensure_ascii=False)
+        if tool_name == "memory_vault_semantic_search":
+            if not config.embeddings_enabled:
+                return json.dumps({"hits": [], "error": "embeddings are disabled"}, ensure_ascii=False)
+            provider = provider_from_config(config)
+            hits = semantic_search(config, str(args.get("query") or ""), provider, limit=int(args.get("limit") or 5))
+            return json.dumps({"hits": hits}, ensure_ascii=False)
 
         conn = ensure_database(config.index_path)
         try:

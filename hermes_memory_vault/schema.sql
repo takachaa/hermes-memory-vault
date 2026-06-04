@@ -62,3 +62,17 @@ CREATE TABLE IF NOT EXISTS chunk_entities (
 );
 
 CREATE INDEX IF NOT EXISTS idx_chunk_entities_entity ON chunk_entities(entity_id);
+
+CREATE TABLE IF NOT EXISTS embeddings (
+    chunk_id TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    dimensions INTEGER NOT NULL,
+    vector_json TEXT NOT NULL,
+    content_sha256 TEXT DEFAULT '',
+    created_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (chunk_id, signature)
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_signature ON embeddings(signature);

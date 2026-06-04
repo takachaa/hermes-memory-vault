@@ -15,6 +15,11 @@ class VaultConfig:
     prefetch_max_chunks: int = 5
     prefetch_max_chars: int = 6000
     fts_enabled: bool = True
+    embeddings_enabled: bool = False
+    embeddings_provider: str = "none"
+    embeddings_model: str = "none"
+    embeddings_base_url: str = ""
+    embeddings_dimensions: int = 0
     path_scope: str = "default"
 
 
@@ -49,6 +54,7 @@ def from_mapping(data: Mapping[str, Any] | None, *, hermes_home: str | Path | No
         hermes_home = Path.home() / ".hermes"
     vault_path = _expand_path(data.get("vault_path", "$HERMES_HOME/memory-vault"), hermes_home)
     index_path = _expand_path(data.get("index_path", str(vault_path / ".memory-vault/index.sqlite")), hermes_home)
+    embeddings = data.get("embeddings", {}) if isinstance(data.get("embeddings", {}), dict) else {}
     return VaultConfig(
         vault_path=vault_path,
         index_path=index_path,
@@ -57,6 +63,11 @@ def from_mapping(data: Mapping[str, Any] | None, *, hermes_home: str | Path | No
         prefetch_max_chunks=max(1, min(_int(data.get("prefetch_max_chunks"), 5), 20)),
         prefetch_max_chars=max(500, min(_int(data.get("prefetch_max_chars"), 6000), 50000)),
         fts_enabled=_bool(data.get("fts_enabled"), True),
+        embeddings_enabled=_bool(embeddings.get("enabled"), False),
+        embeddings_provider=str(embeddings.get("provider") or "none"),
+        embeddings_model=str(embeddings.get("model") or "none"),
+        embeddings_base_url=str(embeddings.get("base_url") or ""),
+        embeddings_dimensions=_int(embeddings.get("dimensions"), 0),
         path_scope=str(data.get("path_scope", "default") or "default"),
     )
 
