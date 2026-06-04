@@ -8,7 +8,9 @@ from .config import load_config
 from .db import ensure_database
 from .health import run_health
 from .reindex import reindex_vault
+from .queue import enqueue_job, list_jobs
 from .retrieval import fetch_chunks, search_chunks
+from .worker import drain_queue
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,6 +26,14 @@ def main(argv: list[str] | None = None) -> int:
     fetch = sub.add_parser("fetch")
     fetch.add_argument("ids", nargs="+")
     fetch.add_argument("--max-chars", type=int, default=4000)
+    qadd = sub.add_parser("queue-add")
+    qadd.add_argument("kind", choices=["summary_daily", "reindex"])
+    qadd.add_argument("--date")
+    qadd.add_argument("--clear", action="store_true")
+    qlist = sub.add_parser("queue-list")
+    qlist.add_argument("--status")
+    qdrain = sub.add_parser("queue-drain")
+    qdrain.add_argument("--max-jobs", type=int, default=10)
     args = parser.parse_args(argv)
 
     cfg = load_config()
@@ -32,6 +42,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "reindex":
         print(json.dumps(reindex_vault(cfg, clear=not args.no_clear), ensure_ascii=False, indent=2))
+        return 0
+    if args.cmd == "queue-add":
+        payload = {"date": args.date} if args.kind == "summary_daily" else {"clear": bool(args.clear)}
+        print(json.dumps({"id": enqueue_job(cfg, args.kind, payload)}, ensure_ascii=False, indent=2))
+        return 0
+    if args.cmd == "queue-list":
+        print(json.dumps(list_jobs(cfg, status=args.status), ensure_ascii=False, indent=2))
+        return 0
+    if args.cmd == "queue-drain":
+        print(json.dumps(drain_queue(cfg, max_jobs=args.max_jobs), ensure_ascii=False, indent=2))
         return 0
     conn = ensure_database(cfg.index_path)
     try:

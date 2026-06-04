@@ -76,3 +76,30 @@ CREATE TABLE IF NOT EXISTS embeddings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_embeddings_signature ON embeddings(signature);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    payload_json TEXT DEFAULT '{}',
+    result_json TEXT DEFAULT '{}',
+    attempts INTEGER DEFAULT 0,
+    error TEXT DEFAULT '',
+    created_at_ms INTEGER NOT NULL,
+    updated_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status_kind ON jobs(status, kind, created_at_ms);
+
+CREATE TABLE IF NOT EXISTS summaries (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    date TEXT,
+    path TEXT NOT NULL,
+    chunk_count INTEGER DEFAULT 0,
+    content_sha256 TEXT DEFAULT '',
+    created_at_ms INTEGER NOT NULL,
+    updated_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_summaries_kind_date ON summaries(kind, date);
