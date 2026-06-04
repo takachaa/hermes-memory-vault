@@ -20,6 +20,9 @@ class VaultConfig:
     embeddings_model: str = "none"
     embeddings_base_url: str = ""
     embeddings_dimensions: int = 0
+    queue_enabled: bool = False
+    summaries_enabled: bool = False
+    summaries_on_session_end: bool = False
     path_scope: str = "default"
 
 
@@ -55,6 +58,8 @@ def from_mapping(data: Mapping[str, Any] | None, *, hermes_home: str | Path | No
     vault_path = _expand_path(data.get("vault_path", "$HERMES_HOME/memory-vault"), hermes_home)
     index_path = _expand_path(data.get("index_path", str(vault_path / ".memory-vault/index.sqlite")), hermes_home)
     embeddings = data.get("embeddings", {}) if isinstance(data.get("embeddings", {}), dict) else {}
+    queue = data.get("queue", {}) if isinstance(data.get("queue", {}), dict) else {}
+    summaries = data.get("summaries", {}) if isinstance(data.get("summaries", {}), dict) else {}
     return VaultConfig(
         vault_path=vault_path,
         index_path=index_path,
@@ -68,6 +73,9 @@ def from_mapping(data: Mapping[str, Any] | None, *, hermes_home: str | Path | No
         embeddings_model=str(embeddings.get("model") or "none"),
         embeddings_base_url=str(embeddings.get("base_url") or ""),
         embeddings_dimensions=_int(embeddings.get("dimensions"), 0),
+        queue_enabled=_bool(queue.get("enabled"), False),
+        summaries_enabled=_bool(summaries.get("enabled"), False),
+        summaries_on_session_end=_bool(summaries.get("on_session_end"), False),
         path_scope=str(data.get("path_scope", "default") or "default"),
     )
 

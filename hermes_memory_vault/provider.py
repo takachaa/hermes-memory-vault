@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
 import json
 import logging
 
@@ -16,6 +17,8 @@ from .config import VaultConfig, load_config
 from .db import ensure_database
 from .health import run_health
 from .ingest import ingest_turn
+from .queue import enqueue_job
+from .summaries import create_daily_summary
 from .retrieval import fetch_chunks, search_chunks
 from .tools import handle_tool, schemas
 
@@ -118,6 +121,39 @@ class HermesMemoryVaultProvider(MemoryProvider):
         self._session_id = new_session_id or self._session_id
         if reset or rewound:
             self._turn_seq = 0
+
+    def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
+        cfg = self._require_config()
+        if not (cfg.summaries_enabled and cfg.summaries_on_session_end):
+            return
+        date = self._summary_date_from_messages(messages)
+        if cfg.queue_enabled:
+            enqueue_job(cfg, "summary_daily", {"date": date, "session_id": self._session_id})
+        else:
+            create_daily_summary(cfg, date)
+
+    @staticmethod
+    def _summary_date_from_messages(messages: List[Dict[str, Any]]) -> str:
+        for message in reversed(messages or []):
+            ts = message.get("timestamp_ms") or message.get("created_at_ms")
+            if ts is not None:
+                try:
+                    return datetime.fromtimestamp(int(ts) / 1000, tz=timezone.utc).date().isoformat()
+                except Exception:
+                    pass
+            iso = message.get("timestamp") or message.get("created_at")
+            if isinstance(iso, str) and iso.strip():
+                try:
+                    text = iso.strip()
+                    if text.endswith("Z"):
+                        text = text[:-1] + "+00:00"
+                    dt = datetime.fromisoformat(text)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt.astimezone(timezone.utc).date().isoformat()
+                except Exception:
+                    pass
+        return datetime.now(timezone.utc).date().isoformat()
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
         return schemas()

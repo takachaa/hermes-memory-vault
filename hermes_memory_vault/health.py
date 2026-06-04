@@ -11,15 +11,44 @@ from .db import ensure_database
 from .reindex import iter_markdown_files, validate_frontmatter
 
 
+def _scaffold_vault(vault_path: Path) -> None:
+    vault_path.mkdir(parents=True, exist_ok=True)
+    for rel in [
+        "content/sessions",
+        "content/chats",
+        "content/documents",
+        "content/notes",
+        "raw/sessions",
+        "raw/imports",
+        "raw/assets",
+        "entities/person",
+        "entities/org",
+        "entities/project",
+        "entities/concept",
+        "summaries/daily",
+        "summaries/weekly",
+        "summaries/monthly",
+        "summaries/projects",
+        ".memory-vault/migrations",
+        ".memory-vault/locks",
+    ]:
+        (vault_path / rel).mkdir(parents=True, exist_ok=True)
+    scaffolds = {
+        "SCHEMA.md": "# Hermes Memory Vault Schema\n\nMarkdown files are the source of truth. SQLite files under `.memory-vault/` are rebuildable indexes and caches.\n",
+        "index.md": "# Hermes Memory Vault\n\nThis vault is managed by the Hermes Memory Vault provider.\n",
+        "log.md": "# Memory Vault Log\n\nOperational notes and maintenance events may be appended here.\n",
+    }
+    for rel, text in scaffolds.items():
+        path = vault_path / rel
+        if not path.exists():
+            path.write_text(text, encoding="utf-8")
+
+
 def run_health(config: VaultConfig, *, deep: bool = False) -> dict[str, Any]:
     checks: list[dict[str, str]] = []
     warnings: list[str] = []
 
-    config.vault_path.mkdir(parents=True, exist_ok=True)
-    (config.vault_path / "content" / "sessions").mkdir(parents=True, exist_ok=True)
-    (config.vault_path / ".memory-vault").mkdir(parents=True, exist_ok=True)
-    for rel in ["content", "entities", "summaries", "raw", ".memory-vault"]:
-        (config.vault_path / rel).mkdir(exist_ok=True)
+    _scaffold_vault(config.vault_path)
     checks.append({"name": "vault_dirs", "status": "ok"})
 
     try:

@@ -98,3 +98,43 @@ def fetch_chunks(
             }
         )
     return result
+
+
+def recent_chunks(
+    conn: sqlite3.Connection,
+    *,
+    vault_path: Path,
+    limit: int = 10,
+    source_kind: str | None = None,
+    after_ms: int | None = None,
+    before_ms: int | None = None,
+) -> list[dict[str, Any]]:
+    limit = max(1, min(int(limit or 10), 100))
+    where: list[str] = []
+    params: list[Any] = []
+    if source_kind:
+        where.append("source_kind = ?")
+        params.append(source_kind)
+    if after_ms is not None:
+        where.append("timestamp_ms >= ?")
+        params.append(after_ms)
+    if before_ms is not None:
+        where.append("timestamp_ms <= ?")
+        params.append(before_ms)
+    params.append(limit)
+    sql = "SELECT * FROM chunks"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY timestamp_ms DESC, updated_at_ms DESC LIMIT ?"
+    rows = conn.execute(sql, params).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "source_kind": row["source_kind"],
+            "timestamp_ms": row["timestamp_ms"],
+            "path": row["content_path"],
+            "preview": row["preview"] or "",
+            "content_sha256": row["content_sha256"],
+        }
+        for row in rows
+    ]

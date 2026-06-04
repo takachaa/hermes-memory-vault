@@ -9,9 +9,11 @@ from .db import ensure_database
 from .entities import search_entities, upsert_entity
 from .embeddings import provider_from_config, semantic_search
 from .health import run_health
+from .ingest import ingest_file
 from .memory_tree import drill_down, fetch_leaves
 from .reindex import reindex_vault
-from .retrieval import fetch_chunks, search_chunks
+from .retrieval import fetch_chunks, recent_chunks, search_chunks
+from .summaries import create_daily_summary
 
 
 def _parse_iso_ms(value: str | None) -> int | None:
@@ -142,6 +144,49 @@ FETCH_LEAVES_SCHEMA = {
     },
 }
 
+INGEST_FILE_SCHEMA = {
+    "name": "memory_vault_ingest_file",
+    "description": "Import a local text/Markdown file into the Markdown Memory Vault and rebuildable SQLite FTS index.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Local file path to ingest."},
+            "source_kind": {"type": "string", "description": "document, note, chat, or another source kind; default document."},
+            "source_id": {"type": "string", "description": "Optional stable source ID; default absolute path."},
+            "title": {"type": "string", "description": "Optional title override."},
+            "tags": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["path"],
+    },
+}
+
+RECENT_SCHEMA = {
+    "name": "memory_vault_recent",
+    "description": "List recently indexed Memory Vault chunks by timestamp.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "limit": {"type": "integer", "description": "Maximum hits, default 10."},
+            "source_kind": {"type": "string", "description": "Optional source kind filter."},
+            "after": {"type": "string", "description": "Optional ISO timestamp lower bound."},
+            "before": {"type": "string", "description": "Optional ISO timestamp upper bound."},
+        },
+        "required": [],
+    },
+}
+
+SUMMARIZE_SCHEMA = {
+    "name": "memory_vault_summarize",
+    "description": "Create or refresh a daily Markdown summary from indexed Memory Vault chunks.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "date": {"type": "string", "description": "Date in YYYY-MM-DD. Defaults to today in UTC."},
+        },
+        "required": [],
+    },
+}
+
 
 def schemas() -> list[dict[str, Any]]:
     return [
@@ -154,6 +199,9 @@ def schemas() -> list[dict[str, Any]]:
         SEMANTIC_SEARCH_SCHEMA,
         DRILL_DOWN_SCHEMA,
         FETCH_LEAVES_SCHEMA,
+        INGEST_FILE_SCHEMA,
+        RECENT_SCHEMA,
+        SUMMARIZE_SCHEMA,
     ]
 
 
@@ -190,6 +238,22 @@ def handle_tool(config: VaultConfig, tool_name: str, args: dict[str, Any]) -> st
             node_id = str(args.get("node_id") or "root")
             leaves = fetch_leaves(config, node_id, limit=int(args.get("limit") or 100))
             return json.dumps({"leaves": leaves}, ensure_ascii=False)
+        if tool_name == "memory_vault_ingest_file":
+            path = str(args.get("path") or "").strip()
+            if not path:
+                return json.dumps({"ok": False, "error": "path is required"}, ensure_ascii=False)
+            chunk = ingest_file(
+                config,
+                path,
+                source_kind=str(args.get("source_kind") or "document"),
+                source_id=str(args.get("source_id") or ""),
+                title=str(args.get("title") or ""),
+                tags=list(args.get("tags") or []),
+            )
+            return json.dumps({"ok": True, "chunk": chunk}, ensure_ascii=False)
+        if tool_name == "memory_vault_summarize":
+            date = str(args.get("date") or datetime.now(timezone.utc).date().isoformat())
+            return json.dumps({"ok": True, "summary": create_daily_summary(config, date)}, ensure_ascii=False)
 
         conn = ensure_database(config.index_path)
         try:
@@ -219,6 +283,17 @@ def handle_tool(config: VaultConfig, tool_name: str, args: dict[str, Any]) -> st
                     max_chars_per_chunk=int(args.get("max_chars_per_chunk") or 4000),
                 )
                 return json.dumps({"chunks": chunks}, ensure_ascii=False)
+
+            if tool_name == "memory_vault_recent":
+                hits = recent_chunks(
+                    conn,
+                    vault_path=config.vault_path,
+                    limit=int(args.get("limit") or 10),
+                    source_kind=args.get("source_kind") or None,
+                    after_ms=_parse_iso_ms(args.get("after")),
+                    before_ms=_parse_iso_ms(args.get("before")),
+                )
+                return json.dumps({"hits": hits}, ensure_ascii=False)
         finally:
             conn.close()
 
