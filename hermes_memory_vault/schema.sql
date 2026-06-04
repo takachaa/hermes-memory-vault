@@ -31,3 +31,34 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
     body,
     tags
 );
+
+CREATE TABLE IF NOT EXISTS entities (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    aliases_json TEXT DEFAULT '[]',
+    path TEXT NOT NULL,
+    created_at_ms INTEGER NOT NULL,
+    updated_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_entities_kind ON entities(kind);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(
+    id UNINDEXED,
+    kind,
+    display_name,
+    aliases,
+    body
+);
+
+CREATE TABLE IF NOT EXISTS chunk_entities (
+    chunk_id TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    relation TEXT DEFAULT 'mentions',
+    confidence REAL DEFAULT 1.0,
+    created_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (chunk_id, entity_id, relation)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunk_entities_entity ON chunk_entities(entity_id);

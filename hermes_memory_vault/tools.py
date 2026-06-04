@@ -6,6 +6,7 @@ import json
 
 from .config import VaultConfig
 from .db import ensure_database
+from .entities import search_entities, upsert_entity
 from .health import run_health
 from .reindex import reindex_vault
 from .retrieval import fetch_chunks, search_chunks
@@ -72,9 +73,38 @@ REINDEX_SCHEMA = {
     },
 }
 
+SEARCH_ENTITIES_SCHEMA = {
+    "name": "memory_vault_search_entities",
+    "description": "Search Markdown-backed Memory Vault entity registry (person, org, project, concept).",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Entity search query."},
+            "kind": {"type": "string", "enum": ["person", "org", "project", "concept"], "description": "Optional entity kind filter."},
+            "limit": {"type": "integer", "description": "Maximum hits, default 10."},
+        },
+        "required": ["query"],
+    },
+}
+
+UPSERT_ENTITY_SCHEMA = {
+    "name": "memory_vault_upsert_entity",
+    "description": "Create or update a Markdown-backed entity note in the Memory Vault registry.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "kind": {"type": "string", "enum": ["person", "org", "project", "concept"]},
+            "display_name": {"type": "string"},
+            "aliases": {"type": "array", "items": {"type": "string"}},
+            "body": {"type": "string", "description": "Free-form Markdown note body."},
+        },
+        "required": ["kind", "display_name"],
+    },
+}
+
 
 def schemas() -> list[dict[str, Any]]:
-    return [SEARCH_SCHEMA, FETCH_SCHEMA, HEALTH_SCHEMA, REINDEX_SCHEMA]
+    return [SEARCH_SCHEMA, FETCH_SCHEMA, HEALTH_SCHEMA, REINDEX_SCHEMA, SEARCH_ENTITIES_SCHEMA, UPSERT_ENTITY_SCHEMA]
 
 
 def handle_tool(config: VaultConfig, tool_name: str, args: dict[str, Any]) -> str:
@@ -83,6 +113,20 @@ def handle_tool(config: VaultConfig, tool_name: str, args: dict[str, Any]) -> st
             return json.dumps(run_health(config, deep=bool(args.get("deep", False))), ensure_ascii=False)
         if tool_name == "memory_vault_reindex":
             return json.dumps(reindex_vault(config, clear=bool(args.get("clear", True))), ensure_ascii=False)
+        if tool_name == "memory_vault_search_entities":
+            query = str(args.get("query") or "").strip()
+            if not query:
+                return json.dumps({"hits": [], "error": "query is required"}, ensure_ascii=False)
+            return json.dumps({"hits": search_entities(config, query, kind=args.get("kind") or None, limit=int(args.get("limit") or 10))}, ensure_ascii=False)
+        if tool_name == "memory_vault_upsert_entity":
+            entity = upsert_entity(
+                config,
+                kind=str(args.get("kind") or "concept"),
+                display_name=str(args.get("display_name") or ""),
+                aliases=list(args.get("aliases") or []),
+                body=str(args.get("body") or ""),
+            )
+            return json.dumps({"ok": True, "entity": entity}, ensure_ascii=False)
 
         conn = ensure_database(config.index_path)
         try:
