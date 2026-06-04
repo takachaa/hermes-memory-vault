@@ -7,6 +7,7 @@ import json
 from .config import VaultConfig
 from .db import ensure_database
 from .health import run_health
+from .reindex import reindex_vault
 from .retrieval import fetch_chunks, search_chunks
 
 
@@ -61,15 +62,27 @@ HEALTH_SCHEMA = {
     },
 }
 
+REINDEX_SCHEMA = {
+    "name": "memory_vault_reindex",
+    "description": "Rebuild the SQLite FTS index from Markdown files in the local Memory Vault.",
+    "parameters": {
+        "type": "object",
+        "properties": {"clear": {"type": "boolean", "description": "Clear existing index before rebuilding; default true."}},
+        "required": [],
+    },
+}
+
 
 def schemas() -> list[dict[str, Any]]:
-    return [SEARCH_SCHEMA, FETCH_SCHEMA, HEALTH_SCHEMA]
+    return [SEARCH_SCHEMA, FETCH_SCHEMA, HEALTH_SCHEMA, REINDEX_SCHEMA]
 
 
 def handle_tool(config: VaultConfig, tool_name: str, args: dict[str, Any]) -> str:
     try:
         if tool_name == "memory_vault_health":
             return json.dumps(run_health(config, deep=bool(args.get("deep", False))), ensure_ascii=False)
+        if tool_name == "memory_vault_reindex":
+            return json.dumps(reindex_vault(config, clear=bool(args.get("clear", True))), ensure_ascii=False)
 
         conn = ensure_database(config.index_path)
         try:

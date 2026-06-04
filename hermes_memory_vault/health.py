@@ -8,6 +8,7 @@ import sqlite3
 from .config import VaultConfig
 from .content_store import body_sha256, parse_markdown
 from .db import ensure_database
+from .reindex import iter_markdown_files, validate_frontmatter
 
 
 def run_health(config: VaultConfig, *, deep: bool = False) -> dict[str, Any]:
@@ -31,8 +32,11 @@ def run_health(config: VaultConfig, *, deep: bool = False) -> dict[str, Any]:
 
     try:
         rows = conn.execute("SELECT id, content_path, content_sha256 FROM chunks").fetchall()
+        indexed_paths = {row["content_path"] for row in rows}
         missing = 0
         sha_mismatch = 0
+        invalid_frontmatter = 0
+        orphan_files = 0
         for row in rows:
             path = config.vault_path / row["content_path"]
             if not path.exists():
@@ -47,7 +51,19 @@ def run_health(config: VaultConfig, *, deep: bool = False) -> dict[str, Any]:
                     warnings.append(f"sha256 mismatch for {row['id']}: {row['content_path']}")
         checks.append({"name": "content_paths", "status": "ok" if missing == 0 else "warn"})
         if deep:
+            for md in iter_markdown_files(config.vault_path):
+                rel = md.relative_to(config.vault_path).as_posix()
+                meta, error, _text = validate_frontmatter(md)
+                if error:
+                    invalid_frontmatter += 1
+                    warnings.append(f"invalid frontmatter in {rel}: {error}")
+                    continue
+                if meta and str(meta.get("id", "")).startswith("chunk_") and rel not in indexed_paths:
+                    orphan_files += 1
+                    warnings.append(f"orphan markdown not indexed: {rel}")
             checks.append({"name": "sha256", "status": "ok" if sha_mismatch == 0 else "warn"})
+            checks.append({"name": "frontmatter", "status": "ok" if invalid_frontmatter == 0 else "warn"})
+            checks.append({"name": "orphan_markdown", "status": "ok" if orphan_files == 0 else "warn"})
     finally:
         conn.close()
 

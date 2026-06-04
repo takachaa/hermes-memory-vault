@@ -7,6 +7,7 @@ from pathlib import Path
 from .config import load_config
 from .db import ensure_database
 from .health import run_health
+from .reindex import reindex_vault
 from .retrieval import fetch_chunks, search_chunks
 
 
@@ -15,6 +16,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     health = sub.add_parser("health")
     health.add_argument("--deep", action="store_true")
+    reindex = sub.add_parser("reindex")
+    reindex.add_argument("--no-clear", action="store_true", help="Do not clear existing index first")
     search = sub.add_parser("search")
     search.add_argument("query")
     search.add_argument("--limit", type=int, default=5)
@@ -26,6 +29,9 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config()
     if args.cmd == "health":
         print(json.dumps(run_health(cfg, deep=args.deep), ensure_ascii=False, indent=2))
+        return 0
+    if args.cmd == "reindex":
+        print(json.dumps(reindex_vault(cfg, clear=not args.no_clear), ensure_ascii=False, indent=2))
         return 0
     conn = ensure_database(cfg.index_path)
     try:
