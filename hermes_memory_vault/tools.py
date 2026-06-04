@@ -9,6 +9,7 @@ from .db import ensure_database
 from .entities import search_entities, upsert_entity
 from .embeddings import provider_from_config, semantic_search
 from .health import run_health
+from .memory_tree import drill_down, fetch_leaves
 from .reindex import reindex_vault
 from .retrieval import fetch_chunks, search_chunks
 
@@ -116,6 +117,31 @@ SEMANTIC_SEARCH_SCHEMA = {
     },
 }
 
+DRILL_DOWN_SCHEMA = {
+    "name": "memory_vault_drill_down",
+    "description": "Explore the Memory Vault source tree: root -> date -> source -> chunk nodes.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "node_id": {"type": "string", "description": "Node to expand; default root. Examples: root, date:2026-06-04, source:hermes_turn:session-a."},
+        },
+        "required": [],
+    },
+}
+
+FETCH_LEAVES_SCHEMA = {
+    "name": "memory_vault_fetch_leaves",
+    "description": "Fetch leaf chunk previews under a memory tree node without expanding intermediate levels.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "node_id": {"type": "string", "description": "Tree node ID."},
+            "limit": {"type": "integer", "description": "Maximum leaves, default 100."},
+        },
+        "required": ["node_id"],
+    },
+}
+
 
 def schemas() -> list[dict[str, Any]]:
     return [
@@ -126,6 +152,8 @@ def schemas() -> list[dict[str, Any]]:
         SEARCH_ENTITIES_SCHEMA,
         UPSERT_ENTITY_SCHEMA,
         SEMANTIC_SEARCH_SCHEMA,
+        DRILL_DOWN_SCHEMA,
+        FETCH_LEAVES_SCHEMA,
     ]
 
 
@@ -155,6 +183,13 @@ def handle_tool(config: VaultConfig, tool_name: str, args: dict[str, Any]) -> st
             provider = provider_from_config(config)
             hits = semantic_search(config, str(args.get("query") or ""), provider, limit=int(args.get("limit") or 5))
             return json.dumps({"hits": hits}, ensure_ascii=False)
+        if tool_name == "memory_vault_drill_down":
+            node_id = str(args.get("node_id") or "root")
+            return json.dumps({"node": drill_down(config, node_id)}, ensure_ascii=False)
+        if tool_name == "memory_vault_fetch_leaves":
+            node_id = str(args.get("node_id") or "root")
+            leaves = fetch_leaves(config, node_id, limit=int(args.get("limit") or 100))
+            return json.dumps({"leaves": leaves}, ensure_ascii=False)
 
         conn = ensure_database(config.index_path)
         try:
