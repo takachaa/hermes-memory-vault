@@ -14,6 +14,8 @@ class VaultConfig:
     prefetch_enabled: bool = True
     prefetch_max_chunks: int = 5
     prefetch_max_chars: int = 6000
+    prefetch_preferred_source_kinds: list[str] | None = None
+    prefetch_raw_fallback: bool = True
     fts_enabled: bool = True
     embeddings_enabled: bool = False
     embeddings_provider: str = "none"
@@ -51,6 +53,16 @@ def _int(value: Any, default: int) -> int:
         return default
 
 
+def _str_list(value: Any, default: list[str]) -> list[str]:
+    if value is None:
+        return list(default)
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(",") if part.strip()]
+    if isinstance(value, (list, tuple)):
+        return [str(part).strip() for part in value if str(part).strip()]
+    return list(default)
+
+
 def from_mapping(data: Mapping[str, Any] | None, *, hermes_home: str | Path | None = None) -> VaultConfig:
     data = data or {}
     if hermes_home is None:
@@ -60,6 +72,10 @@ def from_mapping(data: Mapping[str, Any] | None, *, hermes_home: str | Path | No
     embeddings = data.get("embeddings", {}) if isinstance(data.get("embeddings", {}), dict) else {}
     queue = data.get("queue", {}) if isinstance(data.get("queue", {}), dict) else {}
     summaries = data.get("summaries", {}) if isinstance(data.get("summaries", {}), dict) else {}
+    preferred_kinds = _str_list(
+        data.get("prefetch_preferred_source_kinds"),
+        ["note", "document", "summary_daily", "summary_source", "summary_topic", "summary_global"],
+    )
     return VaultConfig(
         vault_path=vault_path,
         index_path=index_path,
@@ -67,6 +83,8 @@ def from_mapping(data: Mapping[str, Any] | None, *, hermes_home: str | Path | No
         prefetch_enabled=_bool(data.get("prefetch_enabled"), True),
         prefetch_max_chunks=max(1, min(_int(data.get("prefetch_max_chunks"), 5), 20)),
         prefetch_max_chars=max(500, min(_int(data.get("prefetch_max_chars"), 6000), 50000)),
+        prefetch_preferred_source_kinds=preferred_kinds,
+        prefetch_raw_fallback=_bool(data.get("prefetch_raw_fallback"), True),
         fts_enabled=_bool(data.get("fts_enabled"), True),
         embeddings_enabled=_bool(embeddings.get("enabled"), False),
         embeddings_provider=str(embeddings.get("provider") or "none"),

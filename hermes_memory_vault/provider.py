@@ -48,6 +48,12 @@ class HermesMemoryVaultProvider(MemoryProvider):
             {"key": "prefetch_enabled", "description": "Inject FTS recall before each turn", "default": "true", "choices": ["true", "false"]},
             {"key": "prefetch_max_chunks", "description": "Maximum chunks to prefetch", "default": "5"},
             {"key": "prefetch_max_chars", "description": "Maximum prefetch characters", "default": "6000"},
+            {
+                "key": "prefetch_preferred_source_kinds",
+                "description": "Comma-separated source kinds searched before raw conversation archive",
+                "default": "note,document,summary_daily,summary_source,summary_topic,summary_global",
+            },
+            {"key": "prefetch_raw_fallback", "description": "Search raw session turns when preferred layers have no hit", "default": "true", "choices": ["true", "false"]},
         ]
 
     def initialize(self, session_id: str, **kwargs) -> None:
@@ -74,7 +80,7 @@ class HermesMemoryVaultProvider(MemoryProvider):
             return ""
         conn = ensure_database(cfg.index_path)
         try:
-            hits = search_chunks(conn, query, vault_path=cfg.vault_path, limit=cfg.prefetch_max_chunks)
+            hits = self._prefetch_hits(conn, query, cfg)
             if not hits:
                 return ""
             ids = [h["id"] for h in hits]
@@ -94,6 +100,37 @@ class HermesMemoryVaultProvider(MemoryProvider):
         lines.append("")
         lines.append("Use this only as contextual memory; the current user request has priority.")
         return "\n".join(lines).strip()
+
+    @staticmethod
+    def _prefetch_hits(conn, query: str, cfg: VaultConfig) -> list[dict[str, Any]]:
+        """Prefer curated/source/summary memory over raw Hermes turn archive.
+
+        OpenHuman-style retrieval treats raw session turns as provenance leaves,
+        not the primary long-term memory surface. We therefore search curated
+        notes, imported documents, and summary sources first, using raw turns
+        only as a fallback when no preferred layer matches.
+        """
+        preferred = cfg.prefetch_preferred_source_kinds or [
+            "note",
+            "document",
+            "summary_daily",
+            "summary_source",
+            "summary_topic",
+            "summary_global",
+        ]
+        hits: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for source_kind in preferred:
+            remaining = cfg.prefetch_max_chunks - len(hits)
+            if remaining <= 0:
+                break
+            for hit in search_chunks(conn, query, vault_path=cfg.vault_path, limit=remaining, source_kind=source_kind):
+                if hit["id"] not in seen:
+                    hits.append(hit)
+                    seen.add(hit["id"])
+        if hits or not cfg.prefetch_raw_fallback:
+            return hits
+        return search_chunks(conn, query, vault_path=cfg.vault_path, limit=cfg.prefetch_max_chunks)
 
     def sync_turn(
         self,

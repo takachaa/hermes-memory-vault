@@ -18,6 +18,7 @@ def _scaffold_vault(vault_path: Path) -> None:
         "content/chats",
         "content/documents",
         "content/notes",
+        "notes",
         "raw/sessions",
         "raw/imports",
         "raw/assets",
@@ -28,20 +29,54 @@ def _scaffold_vault(vault_path: Path) -> None:
         "summaries/daily",
         "summaries/weekly",
         "summaries/monthly",
+        "summaries/source",
+        "summaries/topic",
+        "summaries/global",
         "summaries/projects",
         ".memory-vault/migrations",
         ".memory-vault/locks",
     ]:
         (vault_path / rel).mkdir(parents=True, exist_ok=True)
     scaffolds = {
-        "SCHEMA.md": "# Hermes Memory Vault Schema\n\nMarkdown files are the source of truth. SQLite files under `.memory-vault/` are rebuildable indexes and caches.\n",
-        "index.md": "# Hermes Memory Vault\n\nThis vault is managed by the Hermes Memory Vault provider.\n",
+        "SCHEMA.md": """# Hermes Memory Vault Schema
+
+Markdown files are the source of truth. SQLite files under `.memory-vault/` are rebuildable indexes and caches.
+
+## OpenHuman-inspired layers
+
+- `content/sessions/`: raw archive of Hermes conversation turns. This is provenance, not the preferred long-term memory surface.
+- `content/documents/`, `content/chats/`, `content/notes/`: canonicalized source chunks from imported documents, chats, and note files.
+- `notes/`: human-authored Obsidian notes. Use this for manually curated, durable knowledge that should be ingested into `content/notes/`.
+- `entities/{person,org,project,concept}/`: durable entity pages for people, organizations, projects, and concepts.
+- `summaries/source/`: source tree summaries that compress one source stream.
+- `summaries/topic/`: topic tree summaries for hot entities/projects/concepts.
+- `summaries/global/` and `summaries/daily/`: global tree and daily digest outputs.
+- `raw/`: non-canonical raw inputs/assets retained for audit or reprocessing.
+
+Raw archive files should remain traceable, but retrieval should prefer curated notes, documents, entities, and summaries before falling back to raw session turns.
+""",
+        "index.md": """# Hermes Memory Vault
+
+This vault is managed by the Hermes Memory Vault provider.
+
+Start in `notes/`, `entities/`, and `summaries/` for human-readable memory. `content/sessions/` is the raw archive/provenance layer.
+""",
         "log.md": "# Memory Vault Log\n\nOperational notes and maintenance events may be appended here.\n",
+        "notes/README.md": "# Curated Notes\n\nHuman-authored Obsidian notes live here. Import important notes with `memory_vault_ingest_file` so they become indexed memory chunks.\n",
     }
     for rel, text in scaffolds.items():
         path = vault_path / rel
         if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
+            continue
+        if rel == "SCHEMA.md":
+            legacy_schema = "# Hermes Memory Vault Schema\n\nMarkdown files are the source of truth. SQLite files under `.memory-vault/` are rebuildable indexes and caches.\n"
+            try:
+                if path.read_text(encoding="utf-8") == legacy_schema:
+                    path.write_text(text, encoding="utf-8")
+            except OSError:
+                pass
 
 
 def run_health(config: VaultConfig, *, deep: bool = False) -> dict[str, Any]:

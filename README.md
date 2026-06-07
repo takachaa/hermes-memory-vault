@@ -9,13 +9,14 @@ Markdown-first long-term memory provider plugin for Hermes Agent.
 - Markdown files under `$HERMES_HOME/memory-vault` are the source of truth.
 - SQLite FTS files under `.memory-vault/` are rebuildable index/cache files.
 - OpenHuman is treated as architectural inspiration only; this repository does not copy OpenHuman code.
+- OpenHuman's Memory Tree idea is represented as layered local Markdown: raw archive leaves, curated notes/documents, entity pages, and source/topic/global summaries.
 - Google Drive / Dropbox / iCloud / Obsidian Sync sharing is intentionally out of scope for the MVP.
 
 ## Implemented features
 
 - `sync_turn()` persists Hermes turns as Markdown.
 - SQLite `chunks` metadata table + FTS5 search index.
-- `prefetch()` injects bounded relevant snippets.
+- `prefetch()` injects bounded relevant snippets, preferring curated notes/documents/summaries before raw session turns.
 - Deep health checks and Markdown-to-SQLite reindex.
 - Markdown-backed entity registry.
 - Optional embedding cache / semantic-search foundation.
@@ -34,6 +35,37 @@ Markdown-first long-term memory provider plugin for Hermes Agent.
   - `memory_vault_ingest_file`
   - `memory_vault_recent`
   - `memory_vault_summarize`
+
+## OpenHuman-inspired memory layout
+
+This plugin does **not** copy OpenHuman code. It adopts the parts of the OpenHuman memory philosophy that fit Hermes:
+
+- **Local-first and inspectable**: Markdown is the durable source of truth; SQLite/FTS/embeddings are rebuildable support data.
+- **Raw archive is provenance**: `content/sessions/` stores Hermes turns as raw leaves so every later summary can be traced back to source material.
+- **Curated memory is preferred**: `notes/`, `content/notes/`, `content/documents/`, `entities/`, and `summaries/` are the preferred long-term memory surfaces.
+- **Tree-shaped compression path**: raw leaves should be folded into source summaries, hot topic/entity summaries, and global/daily digests instead of being the only retrieval target.
+
+Default vault structure:
+
+```text
+memory-vault/
+  notes/                    # human-authored Obsidian notes
+  content/
+    sessions/               # raw Hermes turn archive / provenance leaves
+    notes/                   # indexed canonical notes
+    documents/               # indexed imported documents
+    chats/                   # indexed chat sources
+  entities/
+    person/ org/ project/ concept/
+  summaries/
+    source/ topic/ global/ daily/
+  raw/                       # raw inputs/assets retained for audit or reprocessing
+  .memory-vault/             # SQLite indexes, locks, migrations
+```
+
+`prefetch()` searches curated notes/documents/summaries first and falls back to raw session turns only when those layers have no match. This keeps raw chat logs useful for traceability without making them the primary memory surface.
+
+Detailed design note: [`docs/OPENHUMAN_MEMORY.md`](docs/OPENHUMAN_MEMORY.md).
 
 ## Install locally
 
@@ -71,6 +103,15 @@ memory:
     prefetch_enabled: true
     prefetch_max_chunks: 5
     prefetch_max_chars: 6000
+    # OpenHuman-style retrieval: prefer durable memory surfaces first.
+    prefetch_preferred_source_kinds:
+      - note
+      - document
+      - summary_daily
+      - summary_source
+      - summary_topic
+      - summary_global
+    prefetch_raw_fallback: true
     fts_enabled: true
     embeddings:
       enabled: false
